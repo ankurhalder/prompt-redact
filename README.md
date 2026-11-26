@@ -281,7 +281,7 @@ CI runs `npm run verify` on Node 20 and 22. Versioning is currently `0.1.0`.
 
 ### Release
 
-`0.1.0` is the current release candidate. [`.github/workflows/release.yml`](.github/workflows/release.yml) publishes on a `v*` tag with npm provenance; it expects an `NPM_TOKEN` repository secret (or npm trusted publishing) and a tag matching `package.json` (`v0.1.0`). `prepublishOnly` re-runs the check suite and `prepack` rebuilds `dist`, so a publish cannot ship stale output.
+`0.1.0` is the current release candidate. Publishing happens through [`.github/workflows/release.yml`](.github/workflows/release.yml) only when a GitHub Release is **published** (create a draft, review it, then publish it). The release tag must match `package.json` (`v0.1.0`), the workflow runs the full verification suite, and an already-published version is skipped. It expects an `NPM_TOKEN` repository secret (or npm trusted publishing) and uses the `npm-release` deployment environment, so a reviewer can gate the upload. `prepublishOnly` re-runs the check suite and `prepack` rebuilds `dist`, so a publish cannot ship stale output.
 
 ---
 

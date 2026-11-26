@@ -1,14 +1,20 @@
 name: release
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
 permissions:
   contents: read
   id-token: write
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # workflow_dispatch can be started from any branch; only main may publish.
+    if: github.event_name == 'release' || github.ref == 'refs/heads/main'
+    environment: npm-release
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -17,10 +23,14 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
-      - name: Check tag matches package version
+      - name: Check release tag matches package version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          VERSION="v$(node -p "require('./package.json').version")"
-          test "$VERSION" = "$GITHUB_REF_NAME"
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${RELEASE_TAG#v}"
+          test "$TAG_VERSION" = "$VERSION"
       - run: npm run verify
       - name: Check whether this version is already published
         id: published
