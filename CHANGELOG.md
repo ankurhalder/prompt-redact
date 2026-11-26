@@ -18,6 +18,13 @@ Initial release.
 - Agent skill installer for Claude Code and Cursor with a working blocking hook.
 - Hardened inspector: CSP/frame headers, session-scoped token storage, and
   plaintext-revealing endpoints disabled under `--no-auth`.
+- `guard --hook`: blocks native Read/Bash access to credential-bearing paths,
+  native environment dumps, and literal secrets; use it on PreToolUse.
+- `skill --install --secure`: writes Claude/Cursor MCP configs, Claude permission
+  deny/allow rules, the guard/verify hooks, and .cursorignore so the airlock is
+  the default path rather than an optional one.
+- Native-tool and `airlock_exec` limits are documented; the guard is a
+  best-effort control, not a sandbox.
 - Atomic confined writes, descriptor-based confined reads, and stricter
   configuration validation (unknown keys rejected).
 - Release tooling: 70-test suite, CJS/ESM/bundle checks, tarball install check,

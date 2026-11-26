@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { buildAgentContract, renderContractText } from "./agent/contract.js";
+import { evaluateHook } from "./agent/guard.js";
 import { installSkill, isSkillTarget } from "./agent/install-skill.js";
 import { COMMAND_OPTION_SCOPE, commandsForOption, type CommandName } from "./agent/option-scope.js";
 import { renderSkill } from "./agent/skill.js";
@@ -53,6 +54,7 @@ export const CLI_OPTIONS = {
   install: { type: "boolean" },
   target: { type: "string" },
   track: { type: "boolean" },
+  secure: { type: "boolean" },
   format: { type: "string" },
   help: { type: "boolean", short: "h" },
   version: { type: "boolean", short: "v" },
@@ -67,6 +69,7 @@ const COMMANDS = new Set<CommandName>([
   "setup",
   "doctor",
   "skill",
+  "guard",
   "describe",
 ]);
 
@@ -92,7 +95,8 @@ Commands:
   verify [path]      Verify workspace, --staged, or --stdin has zero leaks
   setup              Write prompt-redact.config.json and print env setup (--autopilot)
   doctor             Validate Node, config, port availability, and round-trip health
-  skill              Print agent skill + hook setup, or --install into repo
+  skill              Print agent skill + hook setup, or --install into repo (--secure)
+  guard              Block native tool access to credentials (use as a hook: --hook)
   describe           Print machine-readable contract (--format json)
 
 Exit codes:
@@ -167,6 +171,7 @@ interface ParsedInvocation {
   install: boolean;
   target: string;
   track: boolean;
+  secure: boolean;
   format: "text" | "json";
 }
 
@@ -309,6 +314,12 @@ export function parseCliArgs(argv: string[]): ParsedInvocation {
       throw new UsageError("--hook does not accept --staged or a positional path.");
     }
   }
+  if (command === "guard" && values.hook !== true) {
+    throw new UsageError("guard requires --hook (it reads a Claude Code hook envelope on stdin).");
+  }
+  if (command === "skill" && values.secure === true && values.install !== true) {
+    throw new UsageError("--secure requires --install.");
+  }
 
   return {
     command,
@@ -347,6 +358,7 @@ export function parseCliArgs(argv: string[]): ParsedInvocation {
     install: values.install === true,
     target,
     track: values.track === true,
+    secure: values.secure === true,
     format: formatRaw,
   };
 }
@@ -504,7 +516,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
           return 0;
         }
         const target = isSkillTarget(parsed.target) ? parsed.target : "all";
-        const result = installSkill(parsed.cwd, target, { track: parsed.track });
+        const result = installSkill(parsed.cwd, target, {
+          track: parsed.track,
+          secure: parsed.secure,
+        });
         if (parsed.format === "json") {
           process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         } else {
@@ -519,6 +534,28 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
           }
         }
         return 0;
+      }
+
+      case "guard": {
+        try {
+          const raw = await readAllStdin();
+          const verdict = evaluateHook(raw, { cwd: parsed.cwd });
+          if (verdict.block) {
+            for (const reason of verdict.reasons) {
+              process.stderr.write("prompt-redact guard: " + reason + "\n");
+            }
+            process.stderr.write(
+              "prompt-redact: blocked by guard --hook (exit 2); use the prompt-redact MCP airlock for credential-bearing work.\n"
+            );
+            return 2;
+          }
+          return 0;
+        } catch (err) {
+          process.stderr.write(
+            "prompt-redact: guard failed closed: " + (err as Error).message + "\n"
+          );
+          return 2;
+        }
       }
 
       case "doctor": {

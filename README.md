@@ -19,6 +19,7 @@ prompt-redact replaces credential-shaped values with opaque tokens before prompt
 - `airlock_exec` is **disabled by default**. Once enabled, every allowlisted command can read the vault (tokens are resolved into its args/env), so a prompt-injected model can exfiltrate secrets through that command. Only enable it for commands and models you trust with every secret in the vault.
 - The CI gate does not trust configuration from the repository it inspects. `verify` ignores a repo-local `allowlist`/`excludePaths`; pass a trusted `--config` if you need them. Expected binaries should be explicitly excluded in a trusted config.
 - The scanner cannot verify files it cannot read. `verify` treats every skipped file (binary, oversized, unreadable, symlinked, invalid UTF-8) as a failed check. `scan` reports them but stays a report, not a gate.
+- The MCP airlock cannot stop native file or shell tools from bypassing it. The secure installer (skill --install --secure) adds permission deny rules and a guard hook, but this remains a guard, not a sandbox.
 
 ### What you can rely on
 
@@ -101,7 +102,37 @@ To enable the executor, add this to `prompt-redact.config.json`:
 
 An empty allowlist refuses everything. Entries without a path separator match the executable basename; entries with one match the full path. Enabling `airlock_exec` is equivalent to granting those commands access to the vault.
 
-### 3. Scanner and CI gate
+### 3. Secure agent setup (recommended for the airlock)
+
+Native Read/Bash tools bypass the MCP server. To make the airlock the default path, install the MCP config, Claude Code permission deny rules, and hooks together:
+
+    npm i -D prompt-redact
+    npx prompt-redact skill --install --secure
+
+This writes:
+
+- .mcp.json (Claude Code) and .cursor/mcp.json (Cursor)
+- .claude/settings.json: denies native reads of .env, keys, SSH material, and cloud credentials; allowlists the six MCP tools; runs guard --hook on PreToolUse and verify --hook on UserPromptSubmit
+- .cursorignore for the same sensitive paths
+- the skill and rule files
+
+guard --hook blocks native reads/commands that target credentials and blocks literal secrets; the MCP tools remain allowlisted. This closes the common bypass, but it is a guard, not a sandbox: obfuscated shell can evade heuristics, and airlock_exec remains a trust boundary for every allowlisted command.
+
+### When the airlock helps - and when it doesn't
+
+Useful when:
+
+- the agent is restricted to the MCP tools, or the secure installer is applied;
+- the model must inspect .env/configs and run authenticated commands without plaintext entering the model;
+- you need an audit trail.
+
+Not a boundary when:
+
+- native Read/Bash remain available and unguarded;
+- the model is untrusted and airlock_exec is enabled (allowlisted commands can exfiltrate);
+- you expect protection from a malicious local process or a compromised host.
+
+### 4. Scanner and CI gate
 
 ```bash
 npx prompt-redact scan --sarif          # writes audit.md + audit.sarif, exit 1 on findings
@@ -113,15 +144,15 @@ npx prompt-redact verify --hook         # Claude Code hook envelope on stdin; ex
 
 `verify` is strict: every skipped file fails the check, and a repo-local config cannot widen allowlists/exclusions. Pass `--config /path/to/trusted.json` (or `--no-config`) for a trusted gate. `scan` is a report: it lists skipped files but exits on findings only.
 
-Exit codes: **0** success/clean, **1** findings or runtime failure, **2** usage/config error (and `verify --hook` uses **2** for findings so Claude Code blocks the action).
+Exit codes: **0** success/clean, **1** findings or runtime failure, **2** usage/config error (and `verify --hook` / `guard --hook` use **2** for findings so Claude Code blocks the action).
 
-### 4. Agent skill and hooks
+### 5. Agent skill and hooks
 
 ```bash
 npx prompt-redact skill --install
 ```
 
-Writes `.claude/skills/prompt-redact/SKILL.md` and `.cursor/rules/prompt-redact.mdc` (Cursor frontmatter included) and adds both to `.gitignore` unless `--track` is used.
+Writes `.claude/skills/prompt-redact/SKILL.md` and `.cursor/rules/prompt-redact.mdc` (Cursor frontmatter included) and adds both to `.gitignore` unless `--track` is used. Add `--secure` to also install the MCP/permission/hook configuration described in section 3.
 
 Claude Code hook example:
 
@@ -132,13 +163,13 @@ Claude Code hook example:
       { "hooks": [{ "type": "command", "command": "npx --no-install prompt-redact verify --hook" }] }
     ],
     "PreToolUse": [
-      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "npx --no-install prompt-redact verify --hook" }] }
+      { "matcher": "Read|Edit|Write|MultiEdit|Grep|Bash", "hooks": [{ "type": "command", "command": "npx --no-install prompt-redact guard --hook" }] }
     ]
   }
 }
 ```
 
-`--hook` parses the JSON envelope on stdin and emits exit code **2** on findings, which is the only code Claude Code treats as blocking.
+`--hook` parses the JSON envelope on stdin and emits exit code **2** on findings, which is the only code Claude Code treats as blocking. The PreToolUse guard blocks native credential reads/commands; the prompt hook scans submitted text.
 
 ---
 
@@ -206,12 +237,13 @@ Example:
 | `serve` | Loopback inspector/playground with `/mcp` mounted (default port 4788). |
 | `scan [path]` | Scan and write `audit.md`; `--sarif` writes `audit.sarif`. |
 | `verify [path]` | Strict gate: workspace, `--staged`, `--stdin`, or `--hook`. |
+| `guard` | PreToolUse hook for native Read/Bash credential access; exits 2 to block. |
 | `setup` | Write the default config and print env hints (`--autopilot` also runs doctor). |
 | `doctor` | Check Node, config, port, and a vault round-trip. |
-| `skill` | Print or install the agent skill (`--install`, `--target`, `--track`). |
+| `skill` | Print or install the agent skill (`--install`, `--target`, `--track`, `--secure`). |
 | `describe` | Machine-readable agent contract (`--format json`). |
 
-Common flags: `--cwd`, `--config`, `--no-config`, `--host`, `--port`, `--token`, `--no-auth`, `--allow-origin`, `--max-entries`, `--overflow-policy`, `--mode` (proxy), `--format`, `--help`, `--version`. Run `describe --format json` for the authoritative per-command option matrix.
+Common flags: `--cwd`, `--config`, `--no-config`, `--host`, `--port`, `--token`, `--no-auth`, `--allow-origin`, `--max-entries`, `--overflow-policy`, `--mode` (proxy), `--format`, `--help`, `--version`. The skill installer also accepts `--secure`. Run `describe --format json` for the authoritative per-command option matrix.
 
 The inspector (`serve`) requires a bearer token by default; its `/api/rehydrate` and `/api/sse-simulate` endpoints (which reveal plaintext) are disabled entirely under `--no-auth`. The page sets CSP/frame-protection headers, and the token is kept in `sessionStorage`, not persistent storage.
 
@@ -240,7 +272,7 @@ The secret-dense payload contains two credential shapes per ~120-character line;
 ```bash
 npm ci
 npm run typecheck     # tsc --noEmit
-npm test              # builds, then runs 70 tests
+npm test              # builds, then runs 72 tests
 npm run verify        # typecheck + tests + pack-check + real tarball install check
 npm run benchmark     # SDK + proxy timings
 ```

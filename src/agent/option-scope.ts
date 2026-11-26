@@ -7,6 +7,7 @@ export type CommandName =
   | "setup"
   | "doctor"
   | "skill"
+  | "guard"
   | "describe";
 
 export const COMMAND_OPTION_SCOPE: Record<CommandName, readonly string[]> = {
@@ -102,7 +103,14 @@ export const COMMAND_OPTION_SCOPE: Record<CommandName, readonly string[]> = {
     "install",
     "target",
     "track",
+    "secure",
     "format",
+    "help",
+    "version",
+  ],
+  guard: [
+    "cwd",
+    "hook",
     "help",
     "version",
   ],

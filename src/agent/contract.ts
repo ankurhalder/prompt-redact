@@ -114,9 +114,17 @@ export function buildAgentContract(): AgentContract {
       },
       {
         name: "skill",
-        summary: "Print bundled agent skill + hook guidance, or --install into .claude/skills and .cursor/rules.",
+        summary:
+          "Print bundled agent skill, or --install into .claude/skills and .cursor/rules. --secure also writes the MCP config, Claude deny rules, and the native-tool guard hook.",
         positionals: [],
         exits: [0, 1, 2],
+      },
+      {
+        name: "guard",
+        summary:
+          "Block native Read/Bash access to credential-bearing paths and unredacted secrets. Use as a PreToolUse hook with --hook; exits 2 to block.",
+        positionals: [],
+        exits: [0, 2],
       },
       {
         name: "describe",
@@ -149,7 +157,7 @@ export function buildAgentContract(): AgentContract {
       { flag: "--mode", type: "string", default: "session", appliesTo: optionAppliesTo("mode"), summary: "Proxy session policy: session (stable tokens) or ephemeral (new vault per request). The SDK and MCP server always keep a per-process vault." },
       { flag: "--staged", type: "boolean", default: false, appliesTo: optionAppliesTo("staged"), summary: "Scan or verify staged git files only." },
       { flag: "--stdin", type: "boolean", default: false, appliesTo: optionAppliesTo("stdin"), summary: "Verify text read from stdin." },
-      { flag: "--hook", type: "boolean", default: false, appliesTo: optionAppliesTo("hook"), summary: "Verify a Claude Code hook JSON envelope from stdin; exits 2 (blocking) on findings." },
+      { flag: "--hook", type: "boolean", default: false, appliesTo: optionAppliesTo("hook"), summary: "Read a Claude Code hook JSON envelope from stdin; guard/verify exit 2 to block." },
       { flag: "--sarif", type: "boolean", default: false, appliesTo: optionAppliesTo("sarif"), summary: "Write audit.sarif (SARIF 2.1.0)." },
       { flag: "--out-dir", type: "string", default: ".", appliesTo: optionAppliesTo("out-dir"), summary: "Directory where audit.md and audit.sarif are written." },
       { flag: "--force", type: "boolean", default: false, appliesTo: optionAppliesTo("force"), summary: "Overwrite existing config file during setup." },
@@ -157,6 +165,7 @@ export function buildAgentContract(): AgentContract {
       { flag: "--install", type: "boolean", default: false, appliesTo: optionAppliesTo("install"), summary: "Install skill files into .claude/skills and .cursor/rules." },
       { flag: "--target", type: "string", default: "all", appliesTo: optionAppliesTo("target"), summary: "Skill target: claude, cursor, or all." },
       { flag: "--track", type: "boolean", default: false, appliesTo: optionAppliesTo("track"), summary: "Do not add installed skill files to .gitignore." },
+      { flag: "--secure", type: "boolean", default: false, appliesTo: optionAppliesTo("secure"), summary: "With --install: write MCP configs, Claude permission deny/allow rules, and the guard/verify hooks." },
       { flag: "--format", type: "string", default: "text", appliesTo: optionAppliesTo("format"), summary: "Output format: text or json." },
     ],
     config: {

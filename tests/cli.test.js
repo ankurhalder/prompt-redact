@@ -160,3 +160,116 @@ test("web inspector serves playground, enforces bearer token, and redacts/rehydr
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("guard --hook blocks native credential access and allows the airlock", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pr-guard-"));
+  const hook = (toolName, toolInput) => JSON.stringify({ tool_name: toolName, tool_input: toolInput });
+  const secret = "sk-proj-" + "guardFixtureSecret1234567890";
+  try {
+    const cases = [
+      ["read .env", hook("Read", { file_path: ".env" }), 2],
+      ["read .env.local", hook("Read", { file_path: ".env.local" }), 2],
+      ["read .env.example", hook("Read", { file_path: ".env.example" }), 0],
+      ["read source", hook("Read", { file_path: "src/index.ts" }), 0],
+      ["grep .env", hook("Grep", { path: ".env" }), 2],
+      ["cat .env", hook("Bash", { command: "cat .env" }), 2],
+      ["cat .env.example", hook("Bash", { command: "cat .env.example" }), 0],
+      ["npm test", hook("Bash", { command: "npm test" }), 0],
+      ["git commit message", hook("Bash", { command: 'git commit -m "docs: explain .env" ' }), 0],
+      ["printenv", hook("Bash", { command: "printenv" }), 2],
+      ["echo key", hook("Bash", { command: "echo $OPENAI_API_KEY" }), 2],
+      ["echo home", hook("Bash", { command: "echo $HOME" }), 0],
+      ["node env dump", hook("Bash", { command: 'node -e "console.log(process.env)"' }), 2],
+      ["literal secret", hook("Bash", { command: "echo " + secret }), 2],
+      ["mcp airlock", hook("mcp__prompt-redact__airlock_read_file", { path: ".env" }), 0],
+      ["invalid json", "{not-json", 2],
+    ];
+    for (const [name, input, expected] of cases) {
+      const result = runCli(["guard", "--hook", "--cwd", dir], { cwd: dir, input });
+      assert.equal(result.status, expected, name + " (stderr: " + result.stderr + ")");
+    }
+    const missingHook = runCli(["guard", "--cwd", dir]);
+    assert.equal(missingHook.status, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("skill --install --secure writes MCP config, deny rules, and guard hooks", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pr-secure-"));
+  const settingsPath = path.join(dir, ".claude", "settings.json");
+  try {
+    const first = runCli(["skill", "--install", "--secure", "--cwd", dir, "--format", "json"]);
+    assert.equal(first.status, 0, first.stderr);
+    const report = JSON.parse(first.stdout);
+    const paths = report.written.map((entry) => path.relative(dir, entry.path).replace(/\\/g, "/"));
+    for (const expected of [
+      ".claude/skills/prompt-redact/SKILL.md",
+      ".cursor/rules/prompt-redact.mdc",
+      ".mcp.json",
+      ".claude/settings.json",
+      ".cursor/mcp.json",
+      ".cursorignore",
+    ]) {
+      assert.ok(paths.includes(expected), "missing " + expected);
+    }
+    assert.equal(report.secureFiles.length, 4);
+    assert.ok(!report.gitignored.includes(".mcp.json"));
+    assert.ok(!report.gitignored.includes(".claude/settings.json"));
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    assert.ok(settings.permissions.deny.some((line) => line.includes(".env")));
+    assert.ok(settings.permissions.deny.some((line) => line.includes(".ssh")));
+    assert.ok(settings.permissions.allow.includes("mcp__prompt-redact__airlock_read_file"));
+    assert.ok(JSON.stringify(settings.hooks.PreToolUse).includes("guard --hook"));
+    assert.ok(JSON.stringify(settings.hooks.UserPromptSubmit).includes("verify --hook"));
+    const mcp = JSON.parse(fs.readFileSync(path.join(dir, ".mcp.json"), "utf8"));
+    assert.equal(mcp.mcpServers["prompt-redact"].command, "npx");
+    assert.deepEqual(mcp.mcpServers["prompt-redact"].args, ["--no-install", "prompt-redact", "mcp"]);
+    assert.ok(fs.readFileSync(path.join(dir, ".cursorignore"), "utf8").includes(".env"));
+
+    const second = runCli(["skill", "--install", "--secure", "--cwd", dir, "--format", "json"]);
+    assert.equal(second.status, 0, second.stderr);
+    const secondReport = JSON.parse(second.stdout);
+    assert.ok(secondReport.written.every((entry) => entry.action === "unchanged"));
+
+    // Preserve unrelated settings and hooks during the merge.
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        custom: true,
+        permissions: { deny: ["Bash(rm:*)"], allow: ["Bash(git:*)"] },
+        hooks: {
+          PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo custom" }] }],
+        },
+      }),
+      "utf8"
+    );
+    const merged = runCli(["skill", "--install", "--secure", "--cwd", dir, "--format", "json"]);
+    assert.equal(merged.status, 0, merged.stderr);
+    const mergedSettings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    assert.equal(mergedSettings.custom, true);
+    assert.ok(mergedSettings.permissions.deny.includes("Bash(rm:*)"));
+    assert.ok(mergedSettings.permissions.allow.includes("Bash(git:*)"));
+    assert.ok(JSON.stringify(mergedSettings.hooks.PreToolUse).includes("echo custom"));
+    assert.ok(JSON.stringify(mergedSettings.hooks.PreToolUse).includes("guard --hook"));
+
+    const needsInstall = runCli(["skill", "--secure", "--cwd", dir]);
+    assert.equal(needsInstall.status, 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  const badDir = fs.mkdtempSync(path.join(os.tmpdir(), "pr-secure-bad-"));
+  try {
+    fs.mkdirSync(path.join(badDir, ".claude"), { recursive: true });
+    fs.writeFileSync(path.join(badDir, ".claude", "settings.json"), "{not json", "utf8");
+    const bad = runCli(["skill", "--install", "--secure", "--cwd", badDir, "--format", "json"]);
+    assert.equal(bad.status, 1);
+    assert.equal(fs.existsSync(path.join(badDir, ".mcp.json")), false);
+    assert.equal(fs.existsSync(path.join(badDir, ".claude", "skills", "prompt-redact", "SKILL.md")), false);
+  } finally {
+    fs.rmSync(badDir, { recursive: true, force: true });
+  }
+});
+

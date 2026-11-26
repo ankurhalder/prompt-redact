@@ -42,11 +42,11 @@ Add a \`UserPromptSubmit\` / \`PreToolUse\` gate in \`.claude/settings.json\`. \
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Read|Edit|Write|MultiEdit|Grep|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "npx --no-install prompt-redact verify --hook"
+            "command": "npx --no-install prompt-redact guard --hook"
           }
         ]
       }
@@ -54,6 +54,10 @@ Add a \`UserPromptSubmit\` / \`PreToolUse\` gate in \`.claude/settings.json\`. \
   }
 }
 \`\`\`
+
+Secure setup: run npx prompt-redact skill --install --secure. It writes the Claude Code MCP config and permission deny rules, the Cursor MCP config and .cursorignore, and both hooks (guard for PreToolUse, verify for UserPromptSubmit).
+
+Native Read/Bash access to credential-bearing paths is then denied or guarded, and the MCP airlock tools are allowlisted. This is a guard, not a sandbox: obfuscated shell can still evade heuristics, and airlock_exec remains a trust boundary for every allowlisted command.
 `;
 
 export function renderSkill(): string {

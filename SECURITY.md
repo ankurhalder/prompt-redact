@@ -25,3 +25,7 @@ Useful reports include:
 vault-access boundary for allowlisted commands. Reports that require enabling
 it with an allowlisted command and a hostile model are treated as design
 limitations, not vulnerabilities, unless the allowlist itself can be bypassed.
+
+`guard --hook` is a best-effort backstop for native tools. Bypasses that rely on
+obfuscated shell commands the guard does not model are treated as limitations
+of the guard, not a claim that native tools are sandboxed.
