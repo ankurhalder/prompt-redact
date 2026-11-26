@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+audit.md
+audit.sarif
+.claude/skills/prompt-redact/
+.cursor/rules/prompt-redact.mdc
+/snapshot/
+/snapshot.tmp/
+*.tgz

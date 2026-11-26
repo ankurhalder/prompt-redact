@@ -1,0 +1,104 @@
+{
+  "name": "prompt-redact",
+  "version": "0.1.0",
+  "description": "Reversible secret redaction SDK, loopback Anthropic/OpenAI proxy, opt-in MCP airlock, and strict secret scanner/gate.",
+  "keywords": [
+    "prompt-redact",
+    "secret-redaction",
+    "llm-proxy",
+    "airlock",
+    "mcp",
+    "mcp-server",
+    "anthropic",
+    "openai",
+    "claude-code",
+    "cursor",
+    "sarif",
+    "security"
+  ],
+  "author": "Ankur Halder <ankur.halder12345@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ankurhalder/prompt-redact.git"
+  },
+  "homepage": "https://github.com/ankurhalder/prompt-redact#readme",
+  "bugs": {
+    "url": "https://github.com/ankurhalder/prompt-redact/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "bin": {
+    "prompt-redact": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./cli": {
+      "import": {
+        "types": "./dist/cli.d.ts",
+        "default": "./dist/cli.js"
+      },
+      "require": {
+        "types": "./dist/cli.d.cts",
+        "default": "./dist/cli.cjs"
+      }
+    },
+    "./mcp": {
+      "import": {
+        "types": "./dist/mcp.d.ts",
+        "default": "./dist/mcp.js"
+      },
+      "require": {
+        "types": "./dist/mcp.d.cts",
+        "default": "./dist/mcp.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/*.js",
+    "dist/*.cjs",
+    "dist/*.d.ts",
+    "dist/*.d.cts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node scripts/test-run.mjs",
+    "check": "npm run typecheck && npm test",
+    "pack-check": "node scripts/pack-check.mjs",
+    "pack-install-check": "node scripts/install-check.mjs",
+    "benchmark": "npm run build && node scripts/benchmark.mjs",
+    "verify": "npm run check && npm run pack-check && npm run pack-install-check",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  }
+}
