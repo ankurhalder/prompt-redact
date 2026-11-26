@@ -35,7 +35,7 @@
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "bin": {
-    "prompt-redact": "./dist/bin.js"
+    "prompt-redact": "dist/bin.js"
   },
   "exports": {
     ".": {

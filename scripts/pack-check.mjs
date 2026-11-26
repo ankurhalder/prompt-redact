@@ -76,6 +76,19 @@ if (sourcemaps.length > 0) {
 }
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+const bins = packageJson.bin ?? {};
+if (Object.keys(bins).length === 0) {
+  problems.push("package.json must declare a bin entry");
+}
+for (const [name, target] of Object.entries(bins)) {
+  if (typeof target !== "string" || target.startsWith("./")) {
+    problems.push(`bin["${name}"] must be a normalized path without "./"`);
+    continue;
+  }
+  if (!files.includes(target)) {
+    problems.push(`bin["${name}"] target is missing from the tarball: ${target}`);
+  }
+}
 const lockPath = path.join(ROOT, "package-lock.json");
 if (fs.existsSync(lockPath)) {
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
