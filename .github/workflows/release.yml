@@ -22,7 +22,18 @@ jobs:
           VERSION="v$(node -p "require('./package.json').version")"
           test "$VERSION" = "$GITHUB_REF_NAME"
       - run: npm run verify
+      - name: Check whether this version is already published
+        id: published
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "prompt-redact@${VERSION}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "prompt-redact@${VERSION} is already on npm; skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish with provenance
+        if: steps.published.outputs.exists != 'true'
         run: npm publish --provenance --access public
         env:
           # Create this repository secret, or configure npm trusted publishing
